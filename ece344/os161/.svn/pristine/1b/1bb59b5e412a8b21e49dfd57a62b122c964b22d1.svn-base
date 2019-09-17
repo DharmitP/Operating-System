@@ -1,0 +1,494 @@
+#include <types.h>
+#include <kern/errno.h>
+#include <lib.h>
+#include <thread.h>
+#include <curthread.h>
+#include <addrspace.h>
+#include <vm.h>
+#include <machine/spl.h>
+#include <machine/tlb.h>
+#include <synch.h>
+
+/*
+ * Dumb MIPS-only "VM system" that is intended to only be just barely
+ * enough to struggle off the ground. You should replace all of this
+ * code while doing the VM assignment. In fact, starting in that
+ * assignment, this file is not included in your kernel!
+ */
+
+/* under dumbvm, always have 48k of user stack */
+#define DUMBVM_STACKPAGES    12
+
+//coremap global variables
+struct coremap_entry *coremap;
+int coremap_created = 0;
+static struct semaphore *coremap_sem;
+int num_page_frames;
+paddr_t first_pageframe_addr;
+int gpp = 0;
+
+void
+vm_bootstrap(void)
+{
+    coremap_sem = sem_create("coremap_sem", 1);
+    P(coremap_sem);
+    
+    /* Find number of physical page frames available for coremap. */
+    
+    //find amount of ramsize available
+    paddr_t lo;
+    paddr_t hi;
+    ram_getsize(&lo, &hi);
+    
+    //calculate # of page frames
+    u_int32_t ram_available = hi - lo;
+    int mem_required_per_entry = PAGE_SIZE + sizeof(struct coremap_entry);
+    num_page_frames = ram_available / mem_required_per_entry;
+    
+    /* Allocate coremap. */
+    coremap = kmalloc(num_page_frames * sizeof(struct coremap_entry));
+    
+    /* Make sure coremap size is aligned (i.e. make sure page frames 
+     * get aligned to 4096). */
+    u_int32_t coremap_size = num_page_frames * sizeof(struct coremap_entry);
+    first_pageframe_addr = lo + coremap_size;
+    while(first_pageframe_addr % 4096 != 0){
+        first_pageframe_addr++;
+    }
+    
+    /* Set initial values of each coremap entry. */
+    int i;
+    for(i = 0; i < num_page_frames; i++){
+//        coremap[i].virtual_addr = 0;
+        coremap[i].v_page = NULL;
+        coremap[i].physical_addr = first_pageframe_addr + i * PAGE_SIZE;
+//        coremap[i].addrspace_id = 0;
+        coremap[i].starting_page = 0;
+        coremap[i].num_page_frames = 1;
+        coremap[i].valid = 0;
+    }
+    
+    //coremap is now created
+    coremap_created = 1;
+    
+    V(coremap_sem);
+}
+
+paddr_t
+getppages(unsigned long npages)
+{     
+	int spl;
+	paddr_t addr;
+        
+        //disable interrupts
+	spl = splhigh();
+        
+        //if coremap is not created yet, continue using ram_stealmem to track memory
+        if(coremap_created == 0){
+            addr = ram_stealmem(npages);
+        }
+        //if coremap created, use new paging methods to track memory
+        else{
+            //P(coremap_sem);
+            //loop through coremap to find empty page frames
+            int i;
+            int num_pages_found = 0;
+            for(i = 0; i < num_page_frames && num_pages_found != npages; i++){
+                if(coremap[i].valid == 0){ //if page frame empty
+                    num_pages_found++;
+                }
+                else{
+                    num_pages_found = 0;
+                }
+            }
+            
+            //update coremap entries if num_pages_found == npages
+            if(num_pages_found == npages){
+                //update the first page frame
+                coremap[i - npages].starting_page = 1; //mark the first free page as the start of block
+                coremap[i - npages].num_page_frames = npages;
+                coremap[i - npages].valid = 1;
+//                kprintf("\ngetting coremap i: %d\n", i - npages);
+//                //update the rest of the page frames
+                int j;
+                for(j = i - npages + 1; j < i; j++){
+                    coremap[j].starting_page = 0;
+                    coremap[j].num_page_frames = 1;
+                    coremap[j].valid = 1;
+//                    kprintf("\ngetting coremap %d\n", j);
+                }
+            }
+            else{
+                splx(spl);
+                return 0;
+            }
+            
+            addr = coremap[i - npages].physical_addr;
+            //V(coremap_sem);
+        }
+	
+	splx(spl);
+	return addr;
+}
+
+/* Allocate/free some kernel-space virtual pages */
+vaddr_t 
+alloc_kpages(int npages)
+{
+	paddr_t pa;
+//        kprintf("\ncalling getppages allock\n");
+	pa = getppages(npages);
+	if (pa==0) {
+		return 0;
+	}
+	return PADDR_TO_KVADDR(pa);
+}
+
+void 
+free_kpages(vaddr_t addr)
+{
+    int spl;
+    spl = splhigh();
+    
+    //get physical address
+    paddr_t phys_addr = KVADDR_TO_PADDR(addr);
+    
+    //get first page frame number
+    int first_page = (phys_addr - first_pageframe_addr) / PAGE_SIZE;
+    
+    //start at first page frame, and start updating coremap
+    int i;
+    for(i = first_page; i < first_page + coremap[first_page].num_page_frames; i++){
+        coremap[i].starting_page = 0;
+        coremap[i].num_page_frames = 1;
+        coremap[i].valid = 0;
+//        kprintf("\nfree %d\n", i);
+    }
+    //print coremap
+//    for(i = 0; i < num_page_frames; i++){
+//        kprintf("%d: %d\n", i, coremap[i].valid);
+//    }
+    splx(spl);
+}
+
+int
+vm_fault(int faulttype, vaddr_t faultaddress)
+{
+	vaddr_t vbase_text, vtop_text, vbase_data, vtop_data, stackbase, stacktop, heapbase, heaptop;
+	paddr_t paddr;
+	int i;
+	u_int32_t ehi, elo;
+	struct addrspace *as;
+	int spl;
+
+	spl = splhigh();
+
+	faultaddress &= PAGE_FRAME;
+        
+	DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
+
+	switch (faulttype) {
+	    case VM_FAULT_READONLY:
+		/* We always create pages read-write, so we can't get this */
+		panic("dumbvm: got VM_FAULT_READONLY\n");
+	    case VM_FAULT_READ:
+	    case VM_FAULT_WRITE:
+		break;
+	    default:
+		splx(spl);
+		return EINVAL;
+	}
+
+	as = curthread->t_vmspace;
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably a kernel
+		 * fault early in boot. Return EFAULT so as to panic
+		 * instead of getting into an infinite faulting loop.
+		 */
+		return EFAULT;
+	}
+
+	/* Assert that the address space has been set up properly. */
+	assert(as->as_vbase_text != 0);
+//	assert(as->as_pbase1 != 0);
+	assert(as->as_npages_text != 0);
+	assert(as->as_vbase_data != 0);
+//	assert(as->as_pbase2 != 0);
+	assert(as->as_npages_data != 0);
+	assert(as->as_vbase_stack != 0);
+	assert((as->as_vbase_text & PAGE_FRAME) == as->as_vbase_text);
+//	assert((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
+	assert((as->as_vbase_data & PAGE_FRAME) == as->as_vbase_data);
+//	assert((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
+	assert((as->as_vbase_stack & PAGE_FRAME) == as->as_vbase_stack);
+        assert(as->as_vbase_heap != 0);
+        assert(as->as_vtop_heap != 0);
+        assert(as->num_pt_entries != 0);
+        assert(as->pagetable != NULL);
+        
+	vbase_text = as->as_vbase_text;
+	vtop_text = vbase_text + as->as_npages_text * PAGE_SIZE; //everything below vtop is within text region; vtop not is not included
+	vbase_data = as->as_vbase_data;
+	vtop_data = vbase_data + as->as_npages_data * PAGE_SIZE;
+	stackbase = as->as_vbase_stack;
+	stacktop = USERSTACK;
+        heapbase = as->as_vbase_heap;
+        heaptop = as->as_vtop_heap;
+
+        // figuring out which region the faultaddress falls in and calculating the paddr
+        // integer divide faultaddress by page size to get index into pagetable
+	if (faultaddress >= vbase_text && faultaddress < vtop_text) {
+//            kprintf("vm fault text\n");
+//		paddr = (faultaddress - vbase1) + as->as_pbase1;
+//            	paddr = as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num * PAGE_SIZE;
+            for(i = 0; i < as->as_npages_text; i++){
+                if(as->pagetable[i].virt_frame_num == faultaddress / PAGE_SIZE){
+                    paddr = (as->pagetable[i].page_frame_num * PAGE_SIZE) + first_pageframe_addr;
+                    break;
+                }
+            }
+	}
+	else if (faultaddress >= vbase_data && faultaddress < vtop_data) {
+//            kprintf("vm fault data\n");
+//		paddr = (faultaddress - vbase2) + as->as_pbase2;
+//                paddr = as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num * PAGE_SIZE;
+            for(i = as->as_npages_text; i < as->as_npages_text + as->as_npages_data; i++){
+                if(as->pagetable[i].virt_frame_num == faultaddress / PAGE_SIZE){
+                    paddr = (as->pagetable[i].page_frame_num * PAGE_SIZE) + first_pageframe_addr;
+                    break;
+                }
+            }
+            
+	}
+	else if (faultaddress >= stackbase && faultaddress < stacktop) {
+//            kprintf("vm fault stack\n");
+            int found = 0;
+//		paddr = (faultaddress - stackbase) + as->as_stackpbase;
+//            int framenum = as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num;
+            for(i = as->as_npages_text + as->as_npages_data; i < num_page_frames * 2; i++){
+                if(as->pagetable[i].virt_frame_num == faultaddress / PAGE_SIZE){
+                    paddr = (as->pagetable[i].page_frame_num * PAGE_SIZE) + first_pageframe_addr;
+                    found = 1;
+//                    if(as->pagetable[i].page_frame_num != -1){
+//                        paddr = as->pagetable[i].page_frame_num * PAGE_SIZE;
+//                    }
+//                    else{
+//                        paddr = getppages(1);
+//                        if(paddr == 0){
+//                            splx(spl);
+//                            return ENOMEM;
+//                        }
+//                        as->pagetable[i].page_frame_num = paddr / PAGE_SIZE;
+//                        as->pagetable[i].present = 1;
+//                    }
+                    break;
+//                    paddr = as->pagetable[i].page_frame_num * PAGE_SIZE;
+//                    found = 1;
+//                    break;
+                }
+            }
+            //if no pagetable entry for faultadderss within valid region, get a frame and create pte
+            if(found == 0){
+                paddr = getppages(1);
+                if(paddr == 0){
+                    splx(spl);
+                    return ENOMEM;
+                }
+                int index;
+                for(index = 0; index < num_page_frames * 2; index++) {
+                    if(as->pagetable[index].present == 0){
+                        as->num_pt_entries++;
+                        as->pagetable[index].page_frame_num = (paddr - first_pageframe_addr) / PAGE_SIZE;
+                        as->pagetable[index].present = 1;
+                        as->pagetable[index].in_valid_region = 1;
+                        as->pagetable[index].virt_frame_num = faultaddress / PAGE_SIZE;
+                        as->as_npages_stack++;
+                        break;
+                    }
+                }
+            }
+                
+//            if(framenum != -1){
+//                paddr = as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num * PAGE_SIZE;
+//            }
+//            else{
+//                paddr = getppages(1);
+//                if(paddr == 0){
+//                    splx(spl);
+//                    return ENOMEM;
+//                }
+//                as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num = paddr / PAGE_SIZE;
+//            }
+	}
+        //check if we need to add another page to the stack (fault is page directly below stack base)
+        else if (faultaddress<stackbase && faultaddress >= stackbase - PAGE_SIZE){
+//            kprintf("vm fault stack alloc\n");
+            //make sure we don't overlap with the heap(i.e out of memory)
+            if(stackbase -PAGE_SIZE > heaptop){
+//                kprintf("\n%d: from stack vm fault\n",faultaddress);
+                paddr = getppages(1);
+//                kprintf("\n paddr: %d\n",paddr);
+                
+                //debugging print out coremap
+//                kprintf("COREMAP\n");
+//                int j;
+//                for(j = 0; j < num_page_frames; j++){
+//                    kprintf("%d: valid %d paddr %d\n", j, coremap[j].valid, coremap[j].physical_addr);
+//                }
+//		for(j=0; j < num_page_frames * 2; j++)
+//			kprintf("%d: vmnum %d pfnum %d\n", j, as->pagetable[j].virt_frame_num, as->pagetable[j].page_frame_num);
+                
+                
+                if(paddr == 0) {
+                    splx(spl);
+                    return ENOMEM;
+                }
+                
+                int index;
+                for(index = 0; index < num_page_frames * 2; index++) {
+                    if(as->pagetable[index].present == 0){
+                        as->num_pt_entries++;
+                        as->pagetable[index].page_frame_num = (paddr - first_pageframe_addr) / PAGE_SIZE;
+                        as->pagetable[index].present = 1;
+                        as->pagetable[index].in_valid_region = 1;
+                        as->pagetable[index].virt_frame_num = faultaddress / PAGE_SIZE;
+                        as->as_npages_stack++;
+                        as->as_vbase_stack -= PAGE_SIZE;
+                        break;
+                    }
+                }
+            }
+            else{
+                splx(spl);
+                return ENOMEM;
+            }
+        }
+        // for growing the stack by more than 1 page; check the faultaddress is within the max 8MB limit and does not go into heap
+        else if(faultaddress < stacktop && faultaddress >= STACKLIMIT && faultaddress >= heaptop){
+//            kprintf("vm fault stack alloc mult");
+            int npages = ((stackbase - faultaddress) / PAGE_SIZE);
+            
+            //check if space available in coremap
+            if (check_getppages(1) == 0) {
+                return ENOMEM;
+            }
+
+            //space is available in coremap, so allocate and update pagetable
+            paddr = getppages(1); // allocate appropriate pages in pagetable and coremap
+            if (paddr == 0) { //no mem
+                return ENOMEM;
+            }
+            int index;
+            for (index = 0; index < num_page_frames * 2; index++) {
+                if (as->pagetable[index].present == 0) {
+                    as->num_pt_entries++;
+                    as->pagetable[index].page_frame_num = (paddr - first_pageframe_addr) / PAGE_SIZE;
+                    as->pagetable[index].present = 1;
+                    as->pagetable[index].in_valid_region = 1;
+                    as->pagetable[index].virt_frame_num = faultaddress / PAGE_SIZE;
+                    as->as_npages_stack++;
+                    break;
+                    }
+                }
+            as->as_vbase_stack -= npages * PAGE_SIZE;
+        }
+        else if (faultaddress >= heapbase && faultaddress < heaptop){
+//            kprintf("vm fault heap\n");
+//            paddr = as->pagetable[(int)(faultaddress / PAGE_SIZE)].page_frame_num * PAGE_SIZE;
+            int found = 0;
+            for(i = as->as_npages_text + as->as_npages_data; i < num_page_frames * 2; i++){
+                if(as->pagetable[i].virt_frame_num == faultaddress / PAGE_SIZE){
+                    paddr = (as->pagetable[i].page_frame_num * PAGE_SIZE) + first_pageframe_addr;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            //if no pagetable entry for faultadderss within valid region, get a frame and create pte
+            if(found == 0){
+                paddr = getppages(1);
+                if(paddr == 0){
+                    splx(spl);
+                    return ENOMEM;
+                }
+                int index;
+                for(index = 0; index < num_page_frames * 2; index++) {
+                    if(as->pagetable[index].present == 0){
+                        as->num_pt_entries++;
+                        as->pagetable[index].page_frame_num = (paddr - first_pageframe_addr) / PAGE_SIZE;
+                        as->pagetable[index].present = 1;
+                        as->pagetable[index].in_valid_region = 1;
+                        as->pagetable[index].virt_frame_num = faultaddress / PAGE_SIZE;
+                        break;
+                    }
+                }
+            }            
+        }
+	else {
+		splx(spl);
+		return EFAULT;
+	}
+        
+//        
+//        if((paddr & PAGE_FRAME)!=paddr)
+//           kprintf("paddr %d\n", paddr); 
+	/* make sure it's page-aligned */
+	assert((paddr & PAGE_FRAME)==paddr);
+        
+        //print out TLB
+//        u_int32_t test_vaddr, test_paddr;
+//        for (i = 0; i < NUM_TLB; ++i) {
+//            TLB_Read(&test_vaddr, &test_paddr, i);
+//            kprintf("vaddr: %d, paddr: %d\n", test_vaddr, test_paddr);
+//        }
+        
+	for (i=0; i<NUM_TLB; i++) {
+		TLB_Read(&ehi, &elo, i);
+		if (elo & TLBLO_VALID) {
+			continue;
+		}
+		ehi = faultaddress;
+		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+		TLB_Write(ehi, elo, i);
+		splx(spl);
+		return 0;
+	}
+        
+        //if TLB is full, write over a random entry
+        ehi = faultaddress;
+        elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+        DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+        TLB_Random(ehi, elo);
+        splx(spl);
+        return 0;
+
+//	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+//	splx(spl);
+//	return EFAULT;
+}
+
+int check_getppages(unsigned long npages){
+	int spl;
+	paddr_t addr;
+        
+        //disable interrupts
+	spl = splhigh();
+    
+            //loop through coremap to find empty page frames
+            int i;
+            int num_pages_found = 0;
+            for(i = 0; i < num_page_frames && num_pages_found != npages; i++){
+                if(coremap[i].valid == 0){ //if page frame empty
+                    num_pages_found++;
+                }
+            }
+            
+	
+	splx(spl);
+        if(num_pages_found == npages)
+            return 1;  //has npages available in coremap
+        else
+            return 0; //no space available
+}

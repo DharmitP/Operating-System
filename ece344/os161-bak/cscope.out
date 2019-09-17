@@ -1,0 +1,939 @@
+cscope 15 /nfs/ug/homes-3/p/pateld83/ece344/os161               0000004240
+	@kern/dev/generic/console.c
+
+24 
+	~<ty³s.h
+>
+
+25 
+	~<k”n/”ºo.h
+>
+
+26 
+	~<lib.h
+>
+
+27 
+	~<machše/¥l.h
+>
+
+28 
+	~<synch.h
+>
+
+29 
+	~<g’”ic/cÚsŞe.h
+>
+
+30 
+	~<dev.h
+>
+
+31 
+	~<vfs.h
+>
+
+32 
+	~<uio.h
+>
+
+33 
+	~"autocÚf.h
+"
+
+38 
+cÚ_soác
+ *
+	gthe_cÚsŞe
+ = 
+NULL
+;
+
+44 
+lock
+ *
+	gcÚ_u£¾ock_»ad
+ = 
+NULL
+;
+
+45 
+lock
+ *
+	gcÚ_u£¾ock_wr™e
+ = 
+NULL
+;
+
+54 
+	#DELAYBUFSIZE
+ 1024
+
+	)
+
+55 
+	gd–ayed_outbuf
+[
+DELAYBUFSIZE
+];
+
+56 
+size_t
+ 
+	gd–ayed_outbuf_pos
+=0;
+
+60 
+	$putch_d–ayed
+(
+ch
+)
+
+67 
+	`as£¹
+(
+d–ayed_outbuf_pos
+ < (
+d–ayed_outbuf
+));
+
+68 
+d–ayed_outbuf
+[
+d–ayed_outbuf_pos
+++] = 
+ch
+;
+
+69 
+	}
+}
+
+73 
+	$æush_d–ay_buf
+()
+
+75 
+size_t
+ 
+i
+;
+
+76 
+i
+=0; i<
+d–ayed_outbuf_pos
+; i++) {
+
+77 
+	`putch
+(
+d–ayed_outbuf
+[
+i
+]);
+
+79 
+d–ayed_outbuf_pos
+ = 0;
+
+80 
+	}
+}
+
+90 
+	$putch_pŞËd
+(
+cÚ_soác
+ *
+cs
+, 
+ch
+)
+
+92 
+cs
+->
+	`cs_£ndpŞËd
+(cs->
+cs_devd©a
+, 
+ch
+);
+
+93 
+	}
+}
+
+103 
+	$putch_šŒ
+(
+cÚ_soác
+ *
+cs
+, 
+ch
+)
+
+105 
+	`P
+(
+cs
+->
+cs_w£m
+);
+
+106 
+cs
+->
+	`cs_£nd
+(cs->
+cs_devd©a
+, 
+ch
+);
+
+107 
+	}
+}
+
+115 
+	$g‘ch_šŒ
+(
+cÚ_soác
+ *
+cs
+)
+
+117 
+	`P
+(
+cs
+->
+cs_r£m
+);
+
+118  
+cs
+->
+cs_gÙch¬
+;
+
+119 
+	}
+}
+
+125 
+	$cÚ_šput
+(*
+vcs
+, 
+ch
+)
+
+127 
+cÚ_soác
+ *
+cs
+ = 
+vcs
+;
+
+129 
+cs
+->
+cs_gÙch¬
+ = 
+ch
+;
+
+130 
+	`V
+(
+cs
+->
+cs_r£m
+);
+
+131 
+	}
+}
+
+137 
+	$cÚ_¡¬t
+(*
+vcs
+)
+
+139 
+cÚ_soác
+ *
+cs
+ = 
+vcs
+;
+
+141 
+	`V
+(
+cs
+->
+cs_w£m
+);
+
+142 
+	}
+}
+
+155 
+	$putch
+(
+ch
+)
+
+157 
+cÚ_soác
+ *
+cs
+ = 
+the_cÚsŞe
+;
+
+159 ià(
+cs
+==
+NULL
+) {
+
+160 
+	`putch_d–ayed
+(
+ch
+);
+
+162 ià(
+š_š‹¼u±
+ || 
+cur¥l
+>0) {
+
+163 
+	`putch_pŞËd
+(
+cs
+, 
+ch
+);
+
+166 
+	`putch_šŒ
+(
+cs
+, 
+ch
+);
+
+168 
+	}
+}
+
+171 
+	$g‘ch
+()
+
+173 
+cÚ_soác
+ *
+cs
+ = 
+the_cÚsŞe
+;
+
+174 
+	`as£¹
+(
+cs
+!=
+NULL
+);
+
+175 
+	`as£¹
+(!
+š_š‹¼u±
+ && 
+cur¥l
+==0);
+
+177  
+	`g‘ch_šŒ
+(
+cs
+);
+
+178 
+	}
+}
+
+188 
+	$cÚ_İ’
+(
+deviû
+ *
+dev
+, 
+İ’æags
+)
+
+190 ()
+dev
+;
+
+191 ()
+İ’æags
+;
+
+193 
+	}
+}
+
+197 
+	$cÚ_şo£
+(
+deviû
+ *
+dev
+)
+
+199 ()
+dev
+;
+
+201 
+	}
+}
+
+205 
+	$cÚ_io
+(
+deviû
+ *
+dev
+, 
+uio
+ *uio)
+
+207 
+»suÉ
+;
+
+208 
+ch
+;
+
+209 
+lock
+ *
+lk
+;
+
+211 ()
+dev
+;
+
+213 ià(
+uio
+->
+uio_rw
+==
+UIO_READ
+) {
+
+214 
+lk
+ = 
+cÚ_u£¾ock_»ad
+;
+
+217 
+lk
+ = 
+cÚ_u£¾ock_wr™e
+;
+
+220 
+	`as£¹
+(
+lk
+ !ğ
+NULL
+);
+
+221 
+	`lock_acquœe
+(
+lk
+);
+
+223 
+uio
+->
+uio_»sid
+ > 0) {
+
+224 ià(
+uio
+->
+uio_rw
+==
+UIO_READ
+) {
+
+225 
+ch
+ = 
+	`g‘ch
+();
+
+226 ià(
+ch
+=='\r') {
+
+227 
+ch
+ = '\n';
+
+229 
+»suÉ
+ = 
+	`uiomove
+(&
+ch
+, 1, 
+uio
+);
+
+230 ià(
+»suÉ
+) {
+
+231 
+	`lock_»Ëa£
+(
+lk
+);
+
+232  
+»suÉ
+;
+
+234 ià(
+ch
+=='\n') {
+
+239 
+»suÉ
+ = 
+	`uiomove
+(&
+ch
+, 1, 
+uio
+);
+
+240 ià(
+»suÉ
+) {
+
+241 
+	`lock_»Ëa£
+(
+lk
+);
+
+242  
+»suÉ
+;
+
+244 ià(
+ch
+=='\n') {
+
+245 
+	`putch
+('\r');
+
+247 
+	`putch
+(
+ch
+);
+
+250 
+	`lock_»Ëa£
+(
+lk
+);
+
+252 
+	}
+}
+
+256 
+	$cÚ_ioùl
+(
+deviû
+ *
+dev
+, 
+İ
+, 
+u£½Œ_t
+ 
+d©a
+)
+
+259 ()
+dev
+;
+
+260 ()
+İ
+;
+
+261 ()
+d©a
+;
+
+262  
+EINVAL
+;
+
+263 
+	}
+}
+
+267 
+	$©ch_cÚsŞe_to_vfs
+(
+cÚ_soác
+ *
+cs
+)
+
+269 
+deviû
+ *
+dev
+;
+
+270 
+»suÉ
+;
+
+272 
+dev
+ = 
+	`km®loc
+((*dev));
+
+273 ià(
+dev
+==
+NULL
+) {
+
+274  
+ENOMEM
+;
+
+277 
+dev
+->
+d_İ’
+ = 
+cÚ_İ’
+;
+
+278 
+dev
+->
+d_şo£
+ = 
+cÚ_şo£
+;
+
+279 
+dev
+->
+d_io
+ = 
+cÚ_io
+;
+
+280 
+dev
+->
+d_ioùl
+ = 
+cÚ_ioùl
+;
+
+281 
+dev
+->
+d_blocks
+ = 0;
+
+282 
+dev
+->
+d_blocksize
+ = 1;
+
+283 
+dev
+->
+d_d©a
+ = 
+cs
+;
+
+285 
+»suÉ
+ = 
+	`vfs_adddev
+("cÚ", 
+dev
+, 0);
+
+286 ià(
+»suÉ
+) {
+
+287 
+	`kä“
+(
+dev
+);
+
+288  
+»suÉ
+;
+
+292 
+	}
+}
+
+301 
+	$cÚfig_cÚ
+(
+cÚ_soác
+ *
+cs
+, 
+un™
+)
+
+303 
+£m­hÜe
+ *
+r£m
+, *
+w£m
+;
+
+304 
+lock
+ *
+¾k
+, *
+wlk
+;
+
+313 ià(
+un™
+>0) {
+
+314 
+	`as£¹
+(
+the_cÚsŞe
+!=
+NULL
+);
+
+315  
+ENODEV
+;
+
+317 
+	`as£¹
+(
+the_cÚsŞe
+==
+NULL
+);
+
+319 
+r£m
+ = 
+	`£m_ü—‹
+("console„ead", 0);
+
+320 ià(
+r£m
+ =ğ
+NULL
+) {
+
+321  
+ENOMEM
+;
+
+323 
+w£m
+ = 
+	`£m_ü—‹
+("console write", 1);
+
+324 ià(
+w£m
+ =ğ
+NULL
+) {
+
+325 
+	`£m_de¡roy
+(
+r£m
+);
+
+326  
+ENOMEM
+;
+
+328 
+¾k
+ = 
+	`lock_ü—‹
+("console-lock-read");
+
+329 ià(
+¾k
+ =ğ
+NULL
+) {
+
+330 
+	`£m_de¡roy
+(
+r£m
+);
+
+331 
+	`£m_de¡roy
+(
+w£m
+);
+
+332  
+ENOMEM
+;
+
+334 
+wlk
+ = 
+	`lock_ü—‹
+("console-lock-write");
+
+335 ià(
+wlk
+ =ğ
+NULL
+) {
+
+336 
+	`lock_de¡roy
+(
+¾k
+);
+
+337 
+	`£m_de¡roy
+(
+r£m
+);
+
+338 
+	`£m_de¡roy
+(
+w£m
+);
+
+339  
+ENOMEM
+;
+
+342 
+cs
+->
+cs_r£m
+ = 
+r£m
+;
+
+343 
+cs
+->
+cs_w£m
+ = 
+w£m
+;
+
+344 
+cs
+->
+cs_gÙch¬
+ = 0;
+
+346 
+the_cÚsŞe
+ = 
+cs
+;
+
+347 
+cÚ_u£¾ock_»ad
+ = 
+¾k
+;
+
+348 
+cÚ_u£¾ock_wr™e
+ = 
+wlk
+;
+
+350 
+	`æush_d–ay_buf
+();
+
+352  
+	`©ch_cÚsŞe_to_vfs
+(
+cs
+);
+
+353 
+	}
+}
+
+	@
+1
+.
+1
+/usr/include
+1
+27
+kern/dev/generic/console.c

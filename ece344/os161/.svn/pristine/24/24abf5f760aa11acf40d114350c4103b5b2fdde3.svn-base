@@ -1,0 +1,104 @@
+/*
+ * Sample/test code for running a user program.  You can use this for
+ * reference when implementing the execv() system call. Remember though
+ * that execv() needs to do more than this function does.
+ */
+
+#include <types.h>
+#include <kern/unistd.h>
+#include <kern/errno.h>
+#include <lib.h>
+#include <addrspace.h>
+#include <thread.h>
+#include <curthread.h>
+#include <vm.h>
+#include <vfs.h>
+#include <test.h>
+
+/*
+ * Load program "progname" and start running it in usermode.
+ * Does not return except on error.
+ *
+ * Calls vfs_open on progname and thus may destroy it.
+ */
+int
+runprogram(char *progname, char **args, unsigned long nargs)
+{
+	struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+	int result;
+
+	/* Open the file. */
+	result = vfs_open(progname, O_RDONLY, &v);
+	if (result) {
+		return result;
+	}
+
+	/* We should be a new thread. */
+	assert(curthread->t_vmspace == NULL);
+
+	/* Create a new address space. */
+	curthread->t_vmspace = as_create();
+	if (curthread->t_vmspace==NULL) {
+		vfs_close(v);
+		return ENOMEM;
+	}
+
+	/* Activate it. */
+	as_activate(curthread->t_vmspace);
+
+	/* Load the executable. */
+	result = load_elf(v, &entrypoint);
+	if (result) {
+		/* thread_exit destroys curthread->t_vmspace */
+		vfs_close(v);
+		return result;
+	}
+
+	/* Done with the file now. */
+	vfs_close(v);
+
+	/* Define the user stack in the address space */
+	result = as_define_stack(curthread->t_vmspace, &stackptr);
+	if (result) {
+		/* thread_exit destroys curthread->t_vmspace */
+		return result;
+	}
+        
+        
+        //Count total number of characters for all arguments
+        int i;
+        int numChars = 0;
+        char **args_ptr = args;
+        for(i = 0; i < nargs; i++){
+            numChars += strlen(args[i]);
+        }
+        
+        //Copy each pointer and value of argument to user space
+        int copyout_result;
+        vaddr_t stack_index = stackptr - (nargs * sizeof(char *) + numChars);  //move stack pointer down by total size of arguments
+        while((int)stack_index % 4 != 0)  //make sure stack_index is aligned by 4 bytes
+            stack_index--;
+        for(i = 0; i < (int)nargs; i++){
+            copyout_result = copyout(args_ptr, stack_index, sizeof(args_ptr[i]));
+            if(copyout_result > 0)
+                return copyout_result;
+            args_ptr += 4;
+            stack_index += 4;
+        }
+        for(i = 0; i < (int)nargs; i++){
+            copyout_result = copyout(args_ptr[i], stack_index, strlen(args_ptr[i]));
+            if(copyout_result > 0)
+                return copyout_result;
+            stack_index += strlen(args_ptr[i]);
+        }
+
+	/* Warp to user mode. */
+	md_usermode(nargs /*argc*/, stack_index /*userspace addr of argv*/,
+		    stackptr, entrypoint);
+	
+	/* md_usermode does not return */
+	panic("md_usermode returned\n");
+	return EINVAL;
+}
+

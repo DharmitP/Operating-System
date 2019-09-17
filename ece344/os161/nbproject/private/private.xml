@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project-private xmlns="http://www.netbeans.org/ns/project-private/1">
+    <code-assistance-data xmlns="http://www.netbeans.org/ns/make-project-private/1">
+        <code-model-enabled>true</code-model-enabled>
+    </code-assistance-data>
+    <data xmlns="http://www.netbeans.org/ns/make-project-private/1">
+        <activeConfTypeElem>0</activeConfTypeElem>
+        <activeConfIndexElem>0</activeConfIndexElem>
+    </data>
+    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
+    <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
+        <group>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/include/vm.h</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/vm/addrspace.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/include/vnode.h</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/arch/mips/include/vm.h</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/arch/mips/mips/syscall.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/userprog/runprogram.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/include/addrspace.h</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/include/kern/unistd.h</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/vm/vm.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/thread/thread.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/userprog/loadelf.c</file>
+            <file>file:/homes/p/pateld83/ece344/os161/kern/include/elf.h</file>
+        </group>
+    </open-files>
+</project-private>
